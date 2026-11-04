@@ -1,6 +1,6 @@
 # kitty-image
 
-A Claude Code mod that lets Claude show PNG images inline in your terminal, using the kitty graphics protocol. Claude renders a plot or diagram to a PNG (matplotlib, graphviz, mermaid-cli, ...), calls the `show_image` tool, and the picture is drawn right under the tool call. Claude only gets a one-line confirmation back, so images cost no context.
+A Claude Code mod that lets Claude show PNG and SVG images inline in your terminal, using the kitty graphics protocol. Claude writes SVG on the fly, or renders a plot or diagram to a file (graphviz, gnuplot, matplotlib, ...), calls the `show_image` tool, and the picture is drawn right under the tool call. Claude only gets a one-line confirmation back, so images cost no context.
 
 ## Install
 
@@ -24,10 +24,16 @@ claude plugin install kitty-image --marketplace hood/claude-kitty-image
 
 | Arg | Required | Default |
 |---|---|---|
-| `path` | yes | absolute path of a PNG (max 2 MiB) |
+| `svg` | one of `svg`/`path` | raw SVG markup, rasterized with `rsvg-convert` |
+| `path` | one of `svg`/`path` | absolute path of a PNG or SVG (max 2 MiB) |
+| `background` | no | SVG only, e.g. `white`; default transparent |
 | `columns` | no | 80 (max 255) |
 | `rows` | no | keeps the aspect ratio |
 | `alt` | no | file name; shown where images can't be drawn |
+
+## Requirements
+
+`rsvg-convert` for SVG (`brew install librsvg`).
 
 ## Terminal support
 
