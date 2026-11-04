@@ -31,6 +31,11 @@ claude plugin install kitty-image --marketplace hood/claude-kitty-image
 | `rows` | no | keeps the aspect ratio |
 | `alt` | no | file name; shown where images can't be drawn |
 
+## Behavior
+
+- Adds a short system prompt section telling Claude to draw charts and diagrams instead of ASCII art, so no CLAUDE.md changes are needed. (Organization-managed plugins can block user plugins from editing the system prompt; the tool's own description carries the same nudge as a fallback.)
+- After sending a picture, the mod checks it was actually drawn. If the terminal only shows the `alt` text, the tool returns an error so Claude falls back to text instead of describing a chart nobody can see.
+
 ## Requirements
 
 `rsvg-convert` for SVG (`brew install librsvg`).

@@ -8,6 +8,16 @@ const KEEP = 12
 const MAX = 2 * 1024 * 1024
 const SVG_WIDTH_PX = 1600
 const PATH = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'
+const GUIDANCE = [
+  '# Inline images (kitty-image)',
+  'You can show pictures inline in the user\'s terminal with the `show_image` tool.',
+  'When a chart, diagram, flow, layout or sketch explains something better than text, draw it with `show_image` instead of ASCII art:',
+  'pass hand-written `svg` (explicit viewBox, a background color, readable font sizes) for sketches and diagrams,',
+  'or render a file with tools like graphviz `dot -Tpng` or gnuplot for graphs and plots.',
+  'Keep text answers self-contained: the image supports the explanation, it does not replace the key facts.',
+  'If `show_image` reports that the terminal cannot draw images, stop using it for the rest of the session and use text instead.',
+].join('\n')
+
 const shown = atom({ plugin: 'kitty-image', key: 'shown' } as const, [], { shape: 'shown-1' })
 
 type Input = { path?: string; svg?: string; background?: string; columns?: number; rows?: number; alt?: string }
@@ -29,7 +39,9 @@ export const register: Register = on => {
       name: 'show_image',
       description:
         "Display an image inline in the user's terminal (kitty graphics protocol). " +
-        'Use it whenever a picture explains better than text: charts, diagrams, sketches, screenshots. ' +
+        'Use it whenever a picture explains better than text: charts, diagrams, flows, sketches, screenshots. ' +
+        'Prefer it over ASCII-art diagrams, without waiting to be asked; keep the key facts in your text too. ' +
+        'If it reports the terminal cannot draw images, stop using it for the session. ' +
         'Either pass `svg` (raw SVG markup you write yourself: the quickest way to draw anything, no files needed) ' +
         'or `path` (absolute path of a PNG or SVG file, e.g. from graphviz `dot -Tpng`, gnuplot, matplotlib). ' +
         'SVGs are rasterized with rsvg-convert; give them an explicit viewBox and a background, since terminals are often dark. ' +
@@ -48,6 +60,12 @@ export const register: Register = on => {
       isDeferred: false,
     })
     return next(e)
+  })
+
+  on('prompt.compose', async ($, e, next) => {
+    const out = await next(e)
+    if (!e.tools.includes(TOOL) || !e.surfaces.includes('terminal')) return out
+    return { sections: [...out.sections, { id: 'kitty-image:guidance', text: GUIDANCE, scope: 'session' as const }] }
   })
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
@@ -85,7 +103,20 @@ export const register: Register = on => {
     const alt = input.alt ?? path?.split('/').pop() ?? 'drawing'
 
     await update($, shown, list => [...list, { id: e.tool_use_id, png: base64, columns, rows, alt }].slice(-KEEP))
-    return { result: `Displayed ${alt} (${size.w}x${size.h}px) at ${columns}x${rows} cells.` }
+
+    // The row draws while the call runs; re-sending the same picture to it is
+    // refused when the terminal shows only the alt text, so it tells us.
+    let deny: string | undefined = 'not mounted'
+    for (let i = 0; i < 15 && deny !== undefined && /mount/i.test(deny); i++) {
+      await $.clock.sleep(100)
+      const blit = await $.ui.blit({ requestId: e.tool_use_id, key: 'img', source: { png: base64 }, columns, rows })
+      deny = blit.deny
+      if (blit.fix === 'tmux-passthrough') return { deny: 'Image not drawn: tmux holds it back. The user must run `tmux set -g allow-passthrough on` and `tmux set -g focus-events on`, then restart Claude Code. Use text meanwhile.' }
+    }
+    if (deny !== undefined && !/mount/i.test(deny))
+      return { deny: `Image not drawn: this terminal cannot show images (${deny}). Use text instead. Kitty-graphics terminals Claude Code does not recognize need CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1.` }
+    const note = deny === undefined ? '' : ' (could not confirm it was drawn)'
+    return { result: `Displayed ${alt} (${size.w}x${size.h}px) at ${columns}x${rows} cells${note}.` }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: `kitty-image: ${next.error?.kind}: ${next.error?.message ?? 'no message'}` }))
 
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
@@ -98,7 +129,7 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {row}
-        <Image source={{ png: img.png }} columns={img.columns} rows={img.rows} alt={img.alt} />
+        <Image key="img" source={{ png: img.png }} columns={img.columns} rows={img.rows} alt={img.alt} />
       </Box>
     )
   })
